@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 /**
+ * ** THIS FILE MIGHT BE INVALID AS IT IS AUTO-GENERATED. **
+ *
  * Minimal Spyglass CLI validator for misode.github.io
  *
  * Validates a JSON file against Spyglass' mcdoc + mcmeta symbol registrars for a given Minecraft version.
