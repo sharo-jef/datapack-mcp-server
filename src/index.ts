@@ -278,24 +278,35 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
     },
   });
 
-  await service.project.ready();
+    await service.project.ready();
 
-  const docUri = new URL(`unsaved/data/draft/${type}/draft.json`, rootUri).toString();
-  await service.project.onDidOpen(docUri, 'json', 1, content);
+    const docUri = new URL(`unsaved/data/draft/${type}/draft.json`, rootUri).toString();
+    await service.project.onDidOpen(docUri, 'json', 1, content);
 
-    const docAndNode = await service.project.ensureClientManagedChecked(docUri);
+    let docAndNode;
+    try {
+      docAndNode = await service.project.ensureClientManagedChecked(docUri);
+    } catch (checkError) {
+      await service.project.close();
+      await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
+      return { 
+        valid: false, 
+        errors: [`Failed to process document: ${checkError instanceof Error ? checkError.message : String(checkError)}`] 
+      };
+    }
+    
     if (!docAndNode) {
       await service.project.close();
       await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
       return { valid: false, errors: ['Failed to parse/check document - invalid JSON syntax or structure'] };
     }
 
-  const err = new core.ErrorReporter();
-  const ctx = core.CheckerContext.create(service.project, { doc: docAndNode.doc, err });
-  const checker = service.project.meta.getChecker(docAndNode.node.type);
-  if (checker) {
-    checker(docAndNode.node, ctx);
-  }
+    const err = new core.ErrorReporter();
+    const ctx = core.CheckerContext.create(service.project, { doc: docAndNode.doc, err });
+    const checker = service.project.meta.getChecker(docAndNode.node.type);
+    if (checker) {
+      checker(docAndNode.node, ctx);
+    }
 
     const errors = err.errors ?? [];
     
