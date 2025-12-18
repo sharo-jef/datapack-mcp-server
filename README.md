@@ -142,10 +142,6 @@ This server uses:
 
 The validation logic is based on [misode/misode.github.io](https://github.com/misode/misode.github.io)'s Spyglass integration.
 
-## License
-
-MIT
-
 ## Credits
 
 - [Spyglass](https://github.com/SpyglassMC/Spyglass) - The validation engine
