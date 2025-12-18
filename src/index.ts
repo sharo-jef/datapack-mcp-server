@@ -326,7 +326,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: 'validate_datapack_json',
-        description: 'Validates Minecraft datapack JSON files using Spyglass. Supports recipes, advancements, loot tables, predicates, and other datapack JSON types.',
+        description: 'REQUIRED: Always use this tool to validate ANY Minecraft datapack JSON before showing it to the user or saving it. This validates JSON structure and values against Minecraft\'s official specifications using Spyglass. Supports all datapack types: recipes, advancements, loot tables, predicates, worldgen files, tags, and more. DO NOT skip validation - invalid JSON will cause errors in Minecraft.',
         inputSchema: {
           type: 'object',
           properties: {
