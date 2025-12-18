@@ -5,12 +5,13 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "datapack-mcp-server": "dist/index.js"
+    "datapack-mcp-server": "src/index.ts"
   },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "node --experimental-strip-types src/index.ts"
+    "start": "node --experimental-strip-types src/index.ts",
+    "prepare": "tsc"
   },
   "keywords": [
     "mcp",
