@@ -226,8 +226,16 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
 
   const NodeExternals = await resolveNodeExternals();
 
+  // Silent logger to avoid stderr output interfering with MCP protocol
+  const silentLogger = {
+    log: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  };
+
   const service = new core.Service({
-    logger: console,
+    logger: silentLogger,
     project: {
       cacheRoot: cacheUri,
       projectRoots: [rootUri],
