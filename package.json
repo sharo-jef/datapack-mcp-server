@@ -10,8 +10,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "start": "node --experimental-strip-types src/index.ts",
-    "prepare": "tsc"
+    "start": "node .",
+    "prepare": "tsc",
+    "test": "node --experimental-strip-types --test test/**/*.test.ts"
   },
   "files": [
     "dist",
