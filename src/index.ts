@@ -190,6 +190,7 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
   valid: boolean;
   errors: string[];
 }> {
+  let baseDir: string | undefined;
   try {
     let { version, packFormat, type, content } = options;
     
@@ -215,7 +216,7 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
       return { valid: false, errors: ['Version could not be determined'] };
     }
     
-    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'datapack-mcp-'));
+    baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'datapack-mcp-'));
     const rootDir = path.join(baseDir, 'root');
     const cacheDir = path.join(baseDir, 'cache');
     await fs.mkdir(rootDir, { recursive: true });
@@ -317,9 +318,11 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
     };
   } catch (error) {
     // Cleanup on any error
-    try {
-      await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
-    } catch {}
+    if (baseDir) {
+      try {
+        await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
+      } catch {}
+    }
     
     return {
       valid: false,
