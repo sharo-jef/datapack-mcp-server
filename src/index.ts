@@ -454,6 +454,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === 'validate_datapack_json') {
     const { type, content, version, packFormat } = request.params.arguments as any;
     
+    // advancement は Spyglass のバグにより非対応
+    if (type === 'advancement') {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: '✗ advancement タイプは現在非対応です。Spyglass のバグによりサーバーがクラッシュする可能性があるため、このタイプの検証は無効化されています。',
+          },
+        ],
+        isError: true,
+      };
+    }
+    
     const result = await validateDatapackJson({
       type,
       content,
@@ -492,8 +505,9 @@ async function main() {
   console.error('Datapack MCP Server running on stdio');
 }
 
-// Only start the server if this file is run directly (not imported)
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Start the server only if not running in test mode
+// Set NO_SERVER_START=1 environment variable to prevent server startup (e.g., in tests)
+if (process.env.NO_SERVER_START !== '1') {
   main().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);
