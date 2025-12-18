@@ -77,10 +77,12 @@ Validates Minecraft datapack JSON files.
 ### Parameters
 
 - `type` (required): The type of datapack file
-  - Examples: `recipe`, `advancement`, `loot_table`, `predicate`, `item_modifier`, `function`, etc.
-- `content` (required): The JSON content to validate (as a string)
+  - Supported types: `loot_table`, `predicate`, `item_modifier`, `recipe`, `text_component`, `chat_type`, `damage_type`, `dialog`, `dimension`, `dimension_type`, `worldgen/biome`, `worldgen/carver`, `worldgen/configured_feature`, `worldgen/placed_feature`, `worldgen/density_function`, `worldgen/noise`, `worldgen/noise_settings`, `worldgen/structure`, `worldgen/structure_set`, `worldgen/template_pool`, `tags/block`, `tags/item`, `tags/entity_type`, `tags/function`
+  - **Note**: `advancement` is currently not supported due to a Spyglass bug
+- `content` (required): The JSON content to validate (as a string, must be valid JSON parseable by JSON.parse)
 - `version` (optional): Minecraft version (e.g., `1.21.11`)
 - `packFormat` (optional): Data pack format number (e.g., `48` for 1.21.4-1.21.11)
+  - Prefer `packFormat` over `version` when available - it is more precise as multiple Minecraft versions can share the same pack format
 
 **Note**: Either `version` or `packFormat` must be specified.
 
@@ -132,13 +134,25 @@ npm run dev
 npm start
 ```
 
+### Test
+
+```bash
+npm test
+```
+
 ## Technical Details
 
 This server uses:
 
 - **Spyglass**: For JSON validation against Minecraft's mcdoc type system
-- **MCP SDK**: For Model Context Protocol support
-- **TypeScript**: Native execution in Node.js v24.4.1+
+  - [@spyglassmc/core](https://www.npmjs.com/package/@spyglassmc/core)
+  - [@spyglassmc/java-edition](https://www.npmjs.com/package/@spyglassmc/java-edition)
+  - [@spyglassmc/json](https://www.npmjs.com/package/@spyglassmc/json)
+  - [@spyglassmc/mcdoc](https://www.npmjs.com/package/@spyglassmc/mcdoc)
+  - [@spyglassmc/nbt](https://www.npmjs.com/package/@spyglassmc/nbt)
+  - [@spyglassmc/locales](https://www.npmjs.com/package/@spyglassmc/locales)
+- **MCP SDK**: For Model Context Protocol support ([@modelcontextprotocol/sdk](https://www.npmjs.com/package/@modelcontextprotocol/sdk))
+- **TypeScript**: Native execution in Node.js v20.10.0+
 
 The validation logic is based on [misode/misode.github.io](https://github.com/misode/misode.github.io)'s Spyglass integration.
 
