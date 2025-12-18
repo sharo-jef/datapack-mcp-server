@@ -190,29 +190,30 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
   valid: boolean;
   errors: string[];
 }> {
-  let { version, packFormat, type, content } = options;
-  
-  if (version && packFormat) {
-    throw new Error('Cannot specify both version and packFormat');
-  }
-  
-  if (!version && !packFormat) {
-    throw new Error('Must specify either version or packFormat');
-  }
-  
-  // Resolve pack format to version if needed
-  if (packFormat) {
-    const versions = await fetchVersions();
-    const match = versions.find((v: any) => v.data_pack_version === packFormat);
-    if (!match) {
-      throw new Error(`No version found for pack format ${packFormat}`);
+  try {
+    let { version, packFormat, type, content } = options;
+    
+    if (version && packFormat) {
+      return { valid: false, errors: ['Cannot specify both version and packFormat'] };
     }
-    version = match.id;
-  }
+    
+    if (!version && !packFormat) {
+      return { valid: false, errors: ['Must specify either version or packFormat'] };
+    }
   
-  if (!version) {
-    throw new Error('Version could not be determined');
-  }
+    // Resolve pack format to version if needed
+    if (packFormat) {
+      const versions = await fetchVersions();
+      const match = versions.find((v: any) => v.data_pack_version === packFormat);
+      if (!match) {
+        return { valid: false, errors: [`No version found for pack format ${packFormat}`] };
+      }
+      version = match.id;
+    }
+    
+    if (!version) {
+      return { valid: false, errors: ['Version could not be determined'] };
+    }
   
   const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'datapack-mcp-'));
   const rootDir = path.join(baseDir, 'root');
@@ -282,12 +283,12 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
   const docUri = new URL(`unsaved/data/draft/${type}/draft.json`, rootUri).toString();
   await service.project.onDidOpen(docUri, 'json', 1, content);
 
-  const docAndNode = await service.project.ensureClientManagedChecked(docUri);
-  if (!docAndNode) {
-    await service.project.close();
-    await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
-    throw new Error('Failed to parse/check document');
-  }
+    const docAndNode = await service.project.ensureClientManagedChecked(docUri);
+    if (!docAndNode) {
+      await service.project.close();
+      await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
+      return { valid: false, errors: ['Failed to parse/check document - invalid JSON syntax or structure'] };
+    }
 
   const err = new core.ErrorReporter();
   const ctx = core.CheckerContext.create(service.project, { doc: docAndNode.doc, err });
@@ -296,15 +297,21 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
     checker(docAndNode.node, ctx);
   }
 
-  const errors = err.errors ?? [];
-  
-  await service.project.close();
-  await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
-  
-  return {
-    valid: errors.length === 0,
-    errors: errors.map(formatError),
-  };
+    const errors = err.errors ?? [];
+    
+    await service.project.close();
+    await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
+    
+    return {
+      valid: errors.length === 0,
+      errors: errors.map(formatError),
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      errors: [`Unexpected error: ${error instanceof Error ? error.message : String(error)}`],
+    };
+  }
 }
 
 // MCP Server
@@ -336,15 +343,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             content: {
               type: 'string',
-              description: 'The JSON content to validate',
+              description: 'The JSON content to validate as a string (must be valid JSON parseable by JSON.parse)',
             },
             version: {
               type: 'string',
-              description: 'Minecraft version (e.g., 1.21.11). Either version or packFormat must be specified.',
+              description: 'Minecraft version (e.g., 1.21.11). Use this when you know the specific Minecraft version. Either version or packFormat must be specified.',
             },
             packFormat: {
               type: 'number',
-              description: 'Data pack format number (e.g., 48 for 1.21.4-1.21.11). Either version or packFormat must be specified.',
+              description: 'Data pack format number (e.g., 48 for 1.21.4-1.21.11). PREFER this over version when available - it is more precise as multiple Minecraft versions can share the same pack format. Either version or packFormat must be specified.',
             },
           },
           required: ['type', 'content'],
@@ -358,40 +365,28 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === 'validate_datapack_json') {
     const { type, content, version, packFormat } = request.params.arguments as any;
     
-    try {
-      const result = await validateDatapackJson({
-        type,
-        content,
-        version,
-        packFormat,
-      });
-      
-      if (result.valid) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `✓ Valid ${type} JSON for Minecraft ${version || `pack format ${packFormat}`}`,
-            },
-          ],
-        };
-      } else {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `✗ Invalid ${type} JSON:\n\n${result.errors.join('\n')}`,
-            },
-          ],
-          isError: true,
-        };
-      }
-    } catch (error) {
+    const result = await validateDatapackJson({
+      type,
+      content,
+      version,
+      packFormat,
+    });
+    
+    if (result.valid) {
       return {
         content: [
           {
             type: 'text',
-            text: `Error during validation: ${error instanceof Error ? error.message : String(error)}`,
+            text: `✓ Valid ${type} JSON for Minecraft ${version || `pack format ${packFormat}`}`,
+          },
+        ],
+      };
+    } else {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `✗ Invalid ${type} JSON:\n\n${result.errors.join('\n')}`,
           },
         ],
         isError: true,
