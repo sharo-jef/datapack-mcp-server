@@ -174,7 +174,10 @@ async function resolveNodeExternals(): Promise<any> {
 
 function formatError(e: any): string {
   const r = e.range;
-  const start = `${r.start.line + 1}:${r.start.character + 1}`;
+  let start = 'unknown';
+  if (r && r.start && typeof r.start.line === 'number' && typeof r.start.character === 'number') {
+    start = `${r.start.line + 1}:${r.start.character + 1}`;
+  }
   const sev = e.severity === 3 ? 'error' : e.severity === 2 ? 'warn' : 'info';
   return `${sev} ${start} ${e.message}`;
 }
