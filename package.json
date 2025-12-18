@@ -1,0 +1,37 @@
+{
+  "name": "datapack-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP Server for validating Minecraft datapack JSON files using Spyglass",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "datapack-mcp-server": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node --experimental-strip-types src/index.ts"
+  },
+  "keywords": [
+    "mcp",
+    "minecraft",
+    "datapack",
+    "validator",
+    "spyglass"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@spyglassmc/core": "^0.4.42",
+    "@spyglassmc/java-edition": "^0.3.54",
+    "@spyglassmc/json": "^0.3.46",
+    "@spyglassmc/locales": "^0.3.21",
+    "@spyglassmc/mcdoc": "^0.3.43",
+    "@spyglassmc/nbt": "^0.3.48"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.3"
+  }
+}

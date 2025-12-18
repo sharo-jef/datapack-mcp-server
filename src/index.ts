@@ -1,0 +1,414 @@
+#!/usr/bin/env node
+/**
+ * MCP Server for validating Minecraft datapack JSON files using Spyglass
+ */
+
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { pathToFileURL } from 'url';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+
+import * as core from '@spyglassmc/core';
+import * as je from '@spyglassmc/java-edition';
+import { ReleaseVersion } from '@spyglassmc/java-edition/lib/dependency/index.js';
+import * as json from '@spyglassmc/json';
+import { localize } from '@spyglassmc/locales';
+import * as mcdoc from '@spyglassmc/mcdoc';
+import * as nbt from '@spyglassmc/nbt';
+
+const mcmetaUrl = 'https://raw.githubusercontent.com/misode/mcmeta';
+const vanillaMcdocUrl = 'https://raw.githubusercontent.com/SpyglassMC/vanilla-mcdoc';
+
+// Utility functions from sample-script.js
+
+async function fetchJson(url: string): Promise<any> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}`);
+  return await res.json();
+}
+
+function mcmetaBase(ref: string, kind: string): string {
+  return `${mcmetaUrl}/${ref}-${kind}`;
+}
+
+async function fetchVanillaMcdoc(): Promise<any> {
+  return await fetchJson(`${vanillaMcdocUrl}/generated/symbols.json`);
+}
+
+async function fetchRegistries(ref: string): Promise<Map<string, string[]>> {
+  const data = await fetchJson(`${mcmetaBase(ref, 'summary')}/registries/data.min.json`);
+  const result = new Map<string, string[]>();
+  for (const id in data) {
+    result.set(id, data[id].map((e: string) => 'minecraft:' + e));
+  }
+  return result;
+}
+
+async function fetchBlockStates(ref: string): Promise<Map<string, any>> {
+  const data = await fetchJson(`${mcmetaBase(ref, 'summary')}/blocks/data.min.json`);
+  const result = new Map();
+  for (const id in data) {
+    result.set(id, data[id]);
+  }
+  return result;
+}
+
+async function fetchVersions(refForSummary = 'summary'): Promise<any[]> {
+  return await fetchJson(`${mcmetaUrl}/${refForSummary}/versions/data.min.json`);
+}
+
+const VanillaMcdocUri = 'mcdoc://vanilla-mcdoc/symbols.json';
+
+function vanillaMcdocRegistrar(vanillaMcdoc: any) {
+  return (symbols: any) => {
+    for (const [id, typeDef] of Object.entries(vanillaMcdoc.mcdoc ?? {})) {
+      symbols.query(VanillaMcdocUri, 'mcdoc', id).enter({
+        data: { data: { typeDef } },
+        usage: { type: 'declaration' },
+      });
+    }
+    for (const [dispatcher, ids] of Object.entries(vanillaMcdoc['mcdoc/dispatcher'] ?? {})) {
+      symbols.query(VanillaMcdocUri, 'mcdoc/dispatcher', dispatcher)
+        .enter({ usage: { type: 'declaration' } })
+        .onEach(Object.entries(ids as any), ([memberId, typeDef]: any, query: any) => {
+          query.member(memberId, (memberQuery: any) => {
+            memberQuery.enter({
+              data: { data: { typeDef } },
+              usage: { type: 'declaration' },
+            });
+          });
+        });
+    }
+  };
+}
+
+function registerAttributes(meta: any, release: string, versions: any[]): void {
+  mcdoc.runtime.registerAttribute(meta, 'since', mcdoc.runtime.attribute.validator.string, {
+    filterElement: (config: string, ctx: any) => {
+      if (!config.startsWith('1.')) {
+        ctx.logger.warn(`Invalid mcdoc attribute for "since": ${config}`);
+        return true;
+      }
+      return ReleaseVersion.cmp(release as any, config as any) >= 0;
+    },
+  });
+  mcdoc.runtime.registerAttribute(meta, 'until', mcdoc.runtime.attribute.validator.string, {
+    filterElement: (config: string, ctx: any) => {
+      if (!config.startsWith('1.')) {
+        ctx.logger.warn(`Invalid mcdoc attribute for "until": ${config}`);
+        return true;
+      }
+      return ReleaseVersion.cmp(release as any, config as any) < 0;
+    },
+  });
+  mcdoc.runtime.registerAttribute(
+    meta,
+    'deprecated',
+    mcdoc.runtime.attribute.validator.optional(mcdoc.runtime.attribute.validator.string),
+    {
+      mapField: (config: string | undefined, field: any, ctx: any) => {
+        if (config === undefined) {
+          return { ...field, deprecated: true };
+        }
+        if (!config.startsWith('1.')) {
+          ctx.logger.warn(`Invalid mcdoc attribute for "deprecated": ${config}`);
+          return field;
+        }
+        if (ReleaseVersion.cmp(release as any, config as any) >= 0) {
+          return { ...field, deprecated: true };
+        }
+        return field;
+      },
+    },
+  );
+  const maxPackFormat = versions?.[0]?.data_pack_version ?? 0;
+  mcdoc.runtime.registerAttribute(meta, 'pack_format', () => undefined, {
+    checker: (_: any, typeDef: any) => {
+      if (typeDef.kind !== 'literal' || typeof typeDef.value.value !== 'number') {
+        return undefined;
+      }
+      const target = typeDef.value.value;
+      return (node: any, ctx: any) => {
+        if (target > maxPackFormat) {
+          ctx.err.report(
+            localize(
+              'expected',
+              localize(
+                'mcdoc.runtime.checker.range.number',
+                localize('mcdoc.runtime.checker.range.right-inclusive', maxPackFormat),
+              ),
+            ),
+            node,
+            3,
+          );
+        }
+      };
+    },
+  });
+}
+
+async function resolveNodeExternals(): Promise<any> {
+  const candidates = [
+    '@spyglassmc/core/lib/nodejs.js',
+    '@spyglassmc/core/lib/node.js',
+    '@spyglassmc/core/lib/node/index.js',
+  ];
+  for (const spec of candidates) {
+    try {
+      const mod = await import(spec);
+      if (mod?.NodeJsExternals) return mod.NodeJsExternals;
+      if (mod?.NodeExternals) return mod.NodeExternals;
+      if (mod?.default) return mod.default;
+    } catch {
+      // ignore
+    }
+  }
+  throw new Error('Cannot find Node externals for @spyglassmc/core.');
+}
+
+function formatError(e: any): string {
+  const r = e.range;
+  const start = `${r.start.line + 1}:${r.start.character + 1}`;
+  const sev = e.severity === 3 ? 'error' : e.severity === 2 ? 'warn' : 'info';
+  return `${sev} ${start} ${e.message}`;
+}
+
+interface ValidationOptions {
+  version?: string;
+  packFormat?: number;
+  type: string;
+  content: string;
+}
+
+async function validateDatapackJson(options: ValidationOptions): Promise<{
+  valid: boolean;
+  errors: string[];
+}> {
+  let { version, packFormat, type, content } = options;
+  
+  if (version && packFormat) {
+    throw new Error('Cannot specify both version and packFormat');
+  }
+  
+  if (!version && !packFormat) {
+    throw new Error('Must specify either version or packFormat');
+  }
+  
+  // Resolve pack format to version if needed
+  if (packFormat) {
+    const versions = await fetchVersions();
+    const match = versions.find((v: any) => v.data_pack_version === packFormat);
+    if (!match) {
+      throw new Error(`No version found for pack format ${packFormat}`);
+    }
+    version = match.id;
+  }
+  
+  if (!version) {
+    throw new Error('Version could not be determined');
+  }
+  
+  const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'datapack-mcp-'));
+  const rootDir = path.join(baseDir, 'root');
+  const cacheDir = path.join(baseDir, 'cache');
+  await fs.mkdir(rootDir, { recursive: true });
+  await fs.mkdir(cacheDir, { recursive: true });
+
+  const rootUri = pathToFileURL(rootDir + path.sep).toString() as `${string}/`;
+  const cacheUri = pathToFileURL(cacheDir + path.sep).toString() as `${string}/`;
+
+  const NodeExternals = await resolveNodeExternals();
+
+  const service = new core.Service({
+    logger: console,
+    project: {
+      cacheRoot: cacheUri,
+      projectRoots: [rootUri],
+      externals: NodeExternals,
+      defaultConfig: core.ConfigService.merge(core.VanillaConfig, {
+        env: {
+          gameVersion: version,
+          dependencies: [],
+          customResources: {
+            [type]: { category: type, pack: 'data' },
+          },
+        },
+      }),
+      initializers: [
+        mcdoc.initialize,
+        async (ctx: any) => {
+          const { config, meta } = ctx;
+          const vanillaMcdoc = await fetchVanillaMcdoc();
+          meta.registerSymbolRegistrar('vanilla-mcdoc', {
+            checksum: vanillaMcdoc.ref ?? 'unknown',
+            registrar: vanillaMcdocRegistrar(vanillaMcdoc),
+          });
+
+          const versions = await fetchVersions();
+          const release = config.env.gameVersion;
+
+          const summary = {
+            registries: Object.fromEntries((await fetchRegistries(version!)).entries()),
+            blocks: Object.fromEntries([...(await fetchBlockStates(version!)).entries()].map(([id, data]) => [id, data])),
+            fluids: je.dependency.Fluids,
+            commands: { type: 'root' as const, children: {} },
+          };
+
+          meta.registerSymbolRegistrar('mcmeta-summary', {
+            checksum: String(version),
+            registrar: je.dependency.symbolRegistrar(summary, release),
+          });
+
+          registerAttributes(meta, release, versions);
+          json.getInitializer()(ctx);
+          je.json.initialize(ctx);
+          je.mcf.initialize(ctx, summary.commands, release);
+          nbt.initialize(ctx);
+
+          return { loadedVersion: release };
+        },
+      ],
+    },
+  });
+
+  await service.project.ready();
+
+  const docUri = new URL(`unsaved/data/draft/${type}/draft.json`, rootUri).toString();
+  await service.project.onDidOpen(docUri, 'json', 1, content);
+
+  const docAndNode = await service.project.ensureClientManagedChecked(docUri);
+  if (!docAndNode) {
+    await service.project.close();
+    await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
+    throw new Error('Failed to parse/check document');
+  }
+
+  const err = new core.ErrorReporter();
+  const ctx = core.CheckerContext.create(service.project, { doc: docAndNode.doc, err });
+  const checker = service.project.meta.getChecker(docAndNode.node.type);
+  if (checker) {
+    checker(docAndNode.node, ctx);
+  }
+
+  const errors = err.errors ?? [];
+  
+  await service.project.close();
+  await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
+  
+  return {
+    valid: errors.length === 0,
+    errors: errors.map(formatError),
+  };
+}
+
+// MCP Server
+
+const server = new Server(
+  {
+    name: 'datapack-mcp-server',
+    version: '1.0.0',
+  },
+  {
+    capabilities: {
+      tools: {},
+    },
+  },
+);
+
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return {
+    tools: [
+      {
+        name: 'validate_datapack_json',
+        description: 'Validates Minecraft datapack JSON files using Spyglass. Supports recipes, advancements, loot tables, predicates, and other datapack JSON types.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            type: {
+              type: 'string',
+              description: 'The type of datapack file. Supported types: loot_table, predicate, item_modifier, advancement, recipe, text_component, chat_type, damage_type, dialog, dimension, dimension_type, worldgen/biome, worldgen/carver, worldgen/configured_feature, worldgen/placed_feature, worldgen/density_function, worldgen/noise, worldgen/noise_settings, worldgen/structure, worldgen/structure_set, worldgen/template_pool, tags/block, tags/item, tags/entity_type, tags/function',
+            },
+            content: {
+              type: 'string',
+              description: 'The JSON content to validate',
+            },
+            version: {
+              type: 'string',
+              description: 'Minecraft version (e.g., 1.21.11). Either version or packFormat must be specified.',
+            },
+            packFormat: {
+              type: 'number',
+              description: 'Data pack format number (e.g., 48 for 1.21.4-1.21.11). Either version or packFormat must be specified.',
+            },
+          },
+          required: ['type', 'content'],
+        },
+      },
+    ],
+  };
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  if (request.params.name === 'validate_datapack_json') {
+    const { type, content, version, packFormat } = request.params.arguments as any;
+    
+    try {
+      const result = await validateDatapackJson({
+        type,
+        content,
+        version,
+        packFormat,
+      });
+      
+      if (result.valid) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✓ Valid ${type} JSON for Minecraft ${version || `pack format ${packFormat}`}`,
+            },
+          ],
+        };
+      } else {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `✗ Invalid ${type} JSON:\n\n${result.errors.join('\n')}`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error during validation: ${error instanceof Error ? error.message : String(error)}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  }
+  
+  throw new Error(`Unknown tool: ${request.params.name}`);
+});
+
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+  console.error('Datapack MCP Server running on stdio');
+}
+
+main().catch((error) => {
+  console.error('Fatal error:', error);
+  process.exit(1);
+});
