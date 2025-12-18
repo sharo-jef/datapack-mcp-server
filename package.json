@@ -5,7 +5,7 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "datapack-mcp-server": "src/index.ts"
+    "datapack-mcp-server": "bin/cli.mjs"
   },
   "scripts": {
     "build": "tsc",
