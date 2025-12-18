@@ -214,29 +214,29 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
     if (!version) {
       return { valid: false, errors: ['Version could not be determined'] };
     }
-  
-  const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'datapack-mcp-'));
-  const rootDir = path.join(baseDir, 'root');
-  const cacheDir = path.join(baseDir, 'cache');
-  await fs.mkdir(rootDir, { recursive: true });
-  await fs.mkdir(cacheDir, { recursive: true });
+    
+    const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'datapack-mcp-'));
+    const rootDir = path.join(baseDir, 'root');
+    const cacheDir = path.join(baseDir, 'cache');
+    await fs.mkdir(rootDir, { recursive: true });
+    await fs.mkdir(cacheDir, { recursive: true });
 
-  const rootUri = pathToFileURL(rootDir + path.sep).toString() as `${string}/`;
-  const cacheUri = pathToFileURL(cacheDir + path.sep).toString() as `${string}/`;
+    const rootUri = pathToFileURL(rootDir + path.sep).toString() as `${string}/`;
+    const cacheUri = pathToFileURL(cacheDir + path.sep).toString() as `${string}/`;
 
-  const NodeExternals = await resolveNodeExternals();
+    const NodeExternals = await resolveNodeExternals();
 
-  // Silent logger to avoid stderr output interfering with MCP protocol
-  const silentLogger = {
-    log: () => {},
-    info: () => {},
-    warn: () => {},
-    error: () => {},
-  };
+    // Silent logger to avoid stderr output interfering with MCP protocol
+    const silentLogger = {
+      log: () => {},
+      info: () => {},
+      warn: () => {},
+      error: () => {},
+    };
 
-  const service = new core.Service({
-    logger: silentLogger,
-    project: {
+    const service = new core.Service({
+      logger: silentLogger,
+      project: {
       cacheRoot: cacheUri,
       projectRoots: [rootUri],
       externals: NodeExternals,
@@ -284,24 +284,14 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
         },
       ],
     },
-  });
+    });
 
     await service.project.ready();
 
     const docUri = new URL(`unsaved/data/draft/${type}/draft.json`, rootUri).toString();
     await service.project.onDidOpen(docUri, 'json', 1, content);
 
-    let docAndNode;
-    try {
-      docAndNode = await service.project.ensureClientManagedChecked(docUri);
-    } catch (checkError) {
-      await service.project.close();
-      await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
-      return { 
-        valid: false, 
-        errors: [`Failed to process document: ${checkError instanceof Error ? checkError.message : String(checkError)}`] 
-      };
-    }
+    const docAndNode = await service.project.ensureClientManagedChecked(docUri);
     
     if (!docAndNode) {
       await service.project.close();
@@ -326,9 +316,14 @@ async function validateDatapackJson(options: ValidationOptions): Promise<{
       errors: errors.map(formatError),
     };
   } catch (error) {
+    // Cleanup on any error
+    try {
+      await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
+    } catch {}
+    
     return {
       valid: false,
-      errors: [`Unexpected error: ${error instanceof Error ? error.message : String(error)}`],
+      errors: [`Validation error: ${error instanceof Error ? error.message : String(error)}`],
     };
   }
 }
