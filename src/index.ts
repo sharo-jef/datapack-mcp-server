@@ -270,10 +270,30 @@ export async function validateDatapackJson(options: ValidationOptions): Promise<
             registrar: vanillaMcdocRegistrar(vanillaMcdoc),
           });
 
-          // Register URI binder normally
-          // Note: There's a known issue with Spyglass advancement criteria symbol binding
-          // but we handle it in the validation error catching below
-          meta.registerUriBinder(je.binder.uriBinder);
+          // Register custom URI binder to handle advancement parent symbols
+          // This fixes the Spyglass bug where criterion symbols need a parent advancement symbol
+          const originalUriBinder = je.binder.uriBinder as any;
+          meta.registerUriBinder(async (uri: any, ctx: any) => {
+            // Check if this is an advancement file
+            const match = /^(.+?)\/data\/([^/]+)\/advancement(?:s)?\/(.+)\.json$/.exec(uri);
+            if (match) {
+              const namespace = match[2];
+              const identifier = match[3];
+              const advancementId = `${namespace}:${identifier}`;
+              
+              // Pre-register the advancement parent symbol so criterion can reference it
+              try {
+                ctx.symbols.query(uri, 'advancement', advancementId).enter({
+                  usage: { type: 'definition' as const },
+                });
+              } catch (error) {
+                // Ignore errors during parent symbol registration
+              }
+            }
+            
+            // Call original binder
+            return await originalUriBinder(uri, ctx);
+          });
 
           const versions = await fetchVersions();
           const release = config.env.gameVersion;
@@ -453,19 +473,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === 'validate_datapack_json') {
     const { type, content, version, packFormat } = request.params.arguments as any;
-    
-    // advancement は Spyglass のバグにより非対応
-    if (type === 'advancement') {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: '✗ advancement タイプは現在非対応です。Spyglass のバグによりサーバーがクラッシュする可能性があるため、このタイプの検証は無効化されています。',
-          },
-        ],
-        isError: true,
-      };
-    }
     
     const result = await validateDatapackJson({
       type,

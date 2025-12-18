@@ -77,8 +77,7 @@ Validates Minecraft datapack JSON files.
 ### Parameters
 
 - `type` (required): The type of datapack file
-  - Supported types: `loot_table`, `predicate`, `item_modifier`, `recipe`, `text_component`, `chat_type`, `damage_type`, `dialog`, `dimension`, `dimension_type`, `worldgen/biome`, `worldgen/carver`, `worldgen/configured_feature`, `worldgen/placed_feature`, `worldgen/density_function`, `worldgen/noise`, `worldgen/noise_settings`, `worldgen/structure`, `worldgen/structure_set`, `worldgen/template_pool`, `tags/block`, `tags/item`, `tags/entity_type`, `tags/function`
-  - **Note**: `advancement` is currently not supported due to a Spyglass bug
+  - Supported types: `advancement`, `loot_table`, `predicate`, `item_modifier`, `recipe`, `text_component`, `chat_type`, `damage_type`, `dialog`, `dimension`, `dimension_type`, `worldgen/biome`, `worldgen/carver`, `worldgen/configured_feature`, `worldgen/placed_feature`, `worldgen/density_function`, `worldgen/noise`, `worldgen/noise_settings`, `worldgen/structure`, `worldgen/structure_set`, `worldgen/template_pool`, `tags/block`, `tags/item`, `tags/entity_type`, `tags/function`
 - `content` (required): The JSON content to validate (as a string, must be valid JSON parseable by JSON.parse)
 - `version` (optional): Minecraft version (e.g., `1.21.11`)
 - `packFormat` (optional): Data pack format number (e.g., `48` for 1.21.4-1.21.11)
