@@ -1,5 +1,8 @@
 # Datapack MCP Server
 
+> [!WARNING]
+> This project was created using GitHub Copilot Chat's Agent mode. Please use with caution and verify the functionality thoroughly.
+
 MCP (Model Context Protocol) Server for validating Minecraft datapack JSON files using Spyglass.
 
 This server allows AI agents to validate Minecraft datapack JSON files (recipes, advancements, loot tables, predicates, etc.) against the official Minecraft data formats.
