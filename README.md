@@ -158,8 +158,14 @@ This server uses:
 
 The validation logic is based on [misode/misode.github.io](https://github.com/misode/misode.github.io)'s Spyglass integration.
 
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+This project includes code based on [misode/misode.github.io](https://github.com/misode/misode.github.io), which is also licensed under the MIT License.
+
 ## Credits
 
 - [Spyglass](https://github.com/SpyglassMC/Spyglass) - The validation engine
-- [misode](https://github.com/misode) - For mcmeta data and inspiration
+- [misode](https://github.com/misode) - For mcmeta data and Spyglass integration code
 - [Model Context Protocol](https://modelcontextprotocol.io/) - MCP specification
