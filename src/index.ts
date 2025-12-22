@@ -389,7 +389,7 @@ export async function validateDatapackJson(
 								[...(await fetchBlockStates(version as string)).entries()].map(
 									([id, data]) => [id, data],
 								),
-							),
+							) as je.dependency.McmetaStates,
 							fluids: je.dependency.Fluids,
 							commands: { type: "root" as const, children: {} },
 						};
@@ -476,7 +476,8 @@ export async function validateDatapackJson(
 			};
 		}
 
-		let docAndNode: unknown;
+		// biome-ignore lint/suspicious/noExplicitAny: Spyglass types are not properly exported
+		let docAndNode: { doc: any; node: any } | undefined;
 		try {
 			docAndNode = await service.project.ensureClientManagedChecked(docUri);
 		} catch (error) {
