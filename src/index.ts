@@ -8,12 +8,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-	CallToolRequestSchema,
-	ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
 import * as core from "@spyglassmc/core";
 import * as je from "@spyglassmc/java-edition";
 import { ReleaseVersion } from "@spyglassmc/java-edition/lib/dependency/index.js";
@@ -21,6 +17,7 @@ import * as json from "@spyglassmc/json";
 import { localize } from "@spyglassmc/locales";
 import * as mcdoc from "@spyglassmc/mcdoc";
 import * as nbt from "@spyglassmc/nbt";
+import { z } from "zod";
 
 const mcmetaUrl = "https://raw.githubusercontent.com/misode/mcmeta";
 const vanillaMcdocUrl =
@@ -558,61 +555,41 @@ export async function validateDatapackJson(
 
 // MCP Server
 
-const server = new Server(
-	{
-		name: "datapack-mcp-server",
-		version: "1.0.0",
-	},
-	{
-		capabilities: {
-			tools: {},
-		},
-	},
-);
-
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-	return {
-		tools: [
-			{
-				name: "validate_datapack_json",
-				description:
-					"REQUIRED: Always use this tool to validate ANY Minecraft datapack JSON before showing it to the user or saving it. This validates JSON structure and values against Minecraft's official specifications using Spyglass. Supports all datapack types: recipes, advancements, loot tables, predicates, worldgen files, tags, and more. DO NOT skip validation - invalid JSON will cause errors in Minecraft.",
-				inputSchema: {
-					type: "object",
-					properties: {
-						type: {
-							type: "string",
-							description:
-								"The type of datapack file. Supported types: loot_table, predicate, item_modifier, advancement, recipe, text_component, chat_type, damage_type, dialog, dimension, dimension_type, worldgen/biome, worldgen/carver, worldgen/configured_feature, worldgen/placed_feature, worldgen/density_function, worldgen/noise, worldgen/noise_settings, worldgen/structure, worldgen/structure_set, worldgen/template_pool, tags/block, tags/item, tags/entity_type, tags/function",
-						},
-						content: {
-							type: "string",
-							description:
-								"The JSON content to validate as a string (must be valid JSON parseable by JSON.parse)",
-						},
-						version: {
-							type: "string",
-							description:
-								"Minecraft version (e.g., 1.21.11). Use this when you know the specific Minecraft version. Either version or packFormat must be specified.",
-						},
-						packFormat: {
-							type: ["number", "string"],
-							description:
-								'Data pack format (e.g., 48, "94.1" for 1.21.11). Supports both integer (major version only) and string format ("major.minor"). PREFER this over version when available - it is more precise as multiple Minecraft versions can share the same pack format. Either version or packFormat must be specified.',
-						},
-					},
-					required: ["type", "content"],
-				},
-			},
-		],
-	};
+const server = new McpServer({
+	name: "datapack-mcp-server",
+	version: "1.0.0",
 });
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-	if (request.params.name === "validate_datapack_json") {
-		const { type, content, version, packFormat } =
-			// biome-ignore lint/suspicious/noExplicitAny: MCP SDK request arguments type
-			request.params.arguments as any;
+server.registerTool(
+	"validate_datapack_json",
+	{
+		description:
+			"REQUIRED: Always use this tool to validate ANY Minecraft datapack JSON before showing it to the user or saving it. This validates JSON structure and values against Minecraft's official specifications using Spyglass. Supports all datapack types: recipes, advancements, loot tables, predicates, worldgen files, tags, and more. DO NOT skip validation - invalid JSON will cause errors in Minecraft.",
+		inputSchema: {
+			type: z.string().describe(
+				"The type of datapack file. Supported types: loot_table, predicate, item_modifier, advancement, recipe, text_component, chat_type, damage_type, dialog, dimension, dimension_type, worldgen/biome, worldgen/carver, worldgen/configured_feature, worldgen/placed_feature, worldgen/density_function, worldgen/noise, worldgen/noise_settings, worldgen/structure, worldgen/structure_set, worldgen/template_pool, tags/block, tags/item, tags/entity_type, tags/function",
+			),
+			content: z
+				.string()
+				.describe(
+					"The JSON content to validate as a string (must be valid JSON parseable by JSON.parse)",
+				),
+			version: z
+				.string()
+				.optional()
+				.describe(
+					"Minecraft version (e.g., 1.21.11). Use this when you know the specific Minecraft version. Either version or packFormat must be specified.",
+				),
+			packFormat: z
+				.union([z.number(), z.string()])
+				.optional()
+				.describe(
+					'Data pack format (e.g., 48, "94.1" for 1.21.11). Supports both integer (major version only) and string format ("major.minor"). PREFER this over version when available - it is more precise as multiple Minecraft versions can share the same pack format. Either version or packFormat must be specified.',
+				),
+		},
+	},
+	async (args) => {
+		const { type, content, version, packFormat } = args;
 
 		const result = await validateDatapackJson({
 			type,
@@ -625,26 +602,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 			return {
 				content: [
 					{
-						type: "text",
+						type: "text" as const,
 						text: `✓ Valid ${type} JSON for Minecraft ${version || `pack format ${packFormat}`}`,
 					},
 				],
 			};
-		} else {
-			return {
-				content: [
-					{
-						type: "text",
-						text: `✗ Invalid ${type} JSON:\n\n${result.errors.join("\n")}`,
-					},
-				],
-				isError: true,
-			};
 		}
-	}
-
-	throw new Error(`Unknown tool: ${request.params.name}`);
-});
+		return {
+			content: [
+				{
+					type: "text" as const,
+					text: `✗ Invalid ${type} JSON:\n\n${result.errors.join("\n")}`,
+				},
+			],
+			isError: true,
+		};
+	},
+);
 
 async function main() {
 	const transport = new StdioServerTransport();
