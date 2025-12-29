@@ -241,7 +241,7 @@ function formatError(e: any): string {
 
 interface ValidationOptions {
 	version?: string;
-	packFormat?: number;
+	packFormat?: number | string;
 	type: string;
 	content: string;
 }
@@ -271,11 +271,34 @@ export async function validateDatapackJson(
 		}
 
 		// Resolve pack format to version if needed
-		if (packFormat) {
+		if (packFormat !== undefined) {
 			const versions = await fetchVersions();
+			let packFormatMajor: number;
+			let packFormatMinor: number;
+
+			// Parse pack format (supports both "94.1" and 94)
+			if (typeof packFormat === "string") {
+				const parts = packFormat.split(".").map(Number);
+				if (parts.length === 0 || parts.some((p) => Number.isNaN(p))) {
+					return {
+						valid: false,
+						errors: [
+							`Invalid pack format: ${packFormat}. Expected format like "94" or "94.1"`,
+						],
+					};
+				}
+				packFormatMajor = parts[0];
+				packFormatMinor = parts[1] ?? 0;
+			} else {
+				packFormatMajor = packFormat;
+				packFormatMinor = 0;
+			}
+
 			const match = versions.find(
 				// biome-ignore lint/suspicious/noExplicitAny: External Spyglass API uses any
-				(v: any) => v.data_pack_version === packFormat,
+				(v: any) =>
+					v.data_pack_version === packFormatMajor &&
+					(v.data_pack_version_minor ?? 0) === packFormatMinor,
 			);
 			if (!match) {
 				return {
@@ -590,9 +613,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 								"Minecraft version (e.g., 1.21.11). Use this when you know the specific Minecraft version. Either version or packFormat must be specified.",
 						},
 						packFormat: {
-							type: "number",
+							type: ["number", "string"],
 							description:
-								"Data pack format number (e.g., 48 for 1.21.4-1.21.11). PREFER this over version when available - it is more precise as multiple Minecraft versions can share the same pack format. Either version or packFormat must be specified.",
+								'Data pack format (e.g., 48, "94.1" for 1.21.11). Supports both integer (major version only) and string format ("major.minor"). PREFER this over version when available - it is more precise as multiple Minecraft versions can share the same pack format. Either version or packFormat must be specified.',
 						},
 					},
 					required: ["type", "content"],
