@@ -276,23 +276,19 @@ export async function validateDatapackJson(
 			let packFormatMajor: number;
 			let packFormatMinor: number;
 
-			// Parse pack format (supports both "94.1" and 94)
-			if (typeof packFormat === "string") {
-				const parts = packFormat.split(".").map(Number);
-				if (parts.length === 0 || parts.some((p) => Number.isNaN(p))) {
-					return {
-						valid: false,
-						errors: [
-							`Invalid pack format: ${packFormat}. Expected format like "94" or "94.1"`,
-						],
-					};
-				}
-				packFormatMajor = parts[0];
-				packFormatMinor = parts[1] ?? 0;
-			} else {
-				packFormatMajor = packFormat;
-				packFormatMinor = 0;
+			// Parse pack format (supports "94.1", "94", 94.1, and 94)
+			const packFormatStr = String(packFormat);
+			const parts = packFormatStr.split(".").map(Number);
+			if (parts.length === 0 || parts.some((p) => Number.isNaN(p))) {
+				return {
+					valid: false,
+					errors: [
+						`Invalid pack format: ${packFormat}. Expected format like "94" or "94.1"`,
+					],
+				};
 			}
+			packFormatMajor = parts[0];
+			packFormatMinor = parts[1] ?? 0;
 
 			const match = versions.find(
 				// biome-ignore lint/suspicious/noExplicitAny: External Spyglass API uses any
