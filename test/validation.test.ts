@@ -303,4 +303,30 @@ describe("Datapack JSON Validation", () => {
 			assert.equal(result.valid, true);
 		});
 	});
+
+	describe("warning detection", () => {
+		it("should detect warnings (not just errors)", async () => {
+			// Test with unknown field that should trigger a warning
+			const result = await validateDatapackJson({
+				type: "recipe",
+				version: "1.20.4",
+				content: JSON.stringify({
+					type: "minecraft:crafting_shaped",
+					pattern: ["###"],
+					key: { "#": { item: "minecraft:diamond" } },
+					result: { item: "minecraft:diamond_block", count: 1 },
+					unknown_field: "this should trigger a warning",
+				}),
+			});
+			// If warnings are properly detected, valid should be false
+			// (because errors array includes both warnings and errors)
+			assert.equal(result.valid, false);
+			assert.ok(result.errors.length > 0);
+			// Check that it's a warning (severity 2)
+			assert.ok(
+				result.errors.some((e) => e.includes("warn")),
+				"Should detect warning-level issues",
+			);
+		});
+	});
 });

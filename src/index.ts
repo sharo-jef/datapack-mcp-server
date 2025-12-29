@@ -521,22 +521,9 @@ export async function validateDatapackJson(
 			};
 		}
 
-		const err = new core.ErrorReporter();
-		const ctx = core.CheckerContext.create(service.project, {
-			doc: docAndNode.doc,
-			err,
-		});
-		const checker = service.project.meta.getChecker(docAndNode.node.type);
-		if (checker) {
-			try {
-				checker(docAndNode.node, ctx);
-			} catch (_error) {
-				// Catch any errors during checking phase
-				// These may include binder errors that shouldn't fail validation
-			}
-		}
-
-		const errors = err.errors ?? [];
+		// Get all errors from the FileNode (includes parser errors and checker errors)
+		// ensureClientManagedChecked already performed all checking, so we just extract the results
+		const errors = core.FileNode.getErrors(docAndNode.node);
 
 		await service.project.close();
 		await fs.rm(baseDir, { recursive: true, force: true }).catch(() => {});
